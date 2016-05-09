@@ -243,7 +243,7 @@ function validate() {
       logerror "Please pass in the GCS Bucket to use with this script"
       exit 1
   else
-      if ! ${GSUTIL} ls -l ${GCS_BUCKET} | grep -q ${GCS_BUCKET} ; then
+      if ! ${GSUTIL} ls ${GCS_BUCKET} &> /dev/null; then
         logerror "Cannot access Google Cloud Storage bucket ${GCS_BUCKET} make sure" \
         " it exists"
         exit 1
