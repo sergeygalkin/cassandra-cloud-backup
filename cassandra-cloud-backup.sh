@@ -78,8 +78,9 @@ Flags:
     Print this help message.
 
   -H, --home-dir
-    This is the $CASSANDRA_HOME directory and is only used if the data_directories, commitlog_directory,
-    or the saved_caches_directory values cannot be parsed out of the yaml file. 
+    This is the $CASSANDRA_HOME directory and is only used if the data_directories, 
+    commitlog_directory, or the saved_caches_directory values cannot be parsed out of the
+    yaml file. 
 
   -i, --incremental
     Copy the incremental backup files and do not take a snapshot. Can only
@@ -98,6 +99,10 @@ Flags:
     Activate logging to file 'CassandraBackup${DATE}.log' from stdout
     Include an optional directory path to write the file
     Default path is /var/log/cassandra
+
+  -L, --inc-commit-logs
+    Add commit logs to the backup archive. WARNING: This option can cause the script to 
+    fail an active server as the files roll over
 
   -n, --noop
     Will attempt a dry run and verify all the settings are correct
@@ -130,8 +135,12 @@ Flags:
       CASSANDRA_USER=username
       CASSANDRA_PASS=password
 
-  -v --verbose
+  -v, --verbose
     When provided will print additional information to log file
+
+  -w, --with-caches
+    For posterity's sake, to save the read caches in a backup use this flag, although it
+    likely represents a waste of space
 
   -y, --yaml
     Path to the Cassandra yaml configuration file
@@ -271,6 +280,9 @@ function validate() {
         data_file_directories="${CASS_HOME}/data/data"
       fi
     fi 
+    if ${INCLUDE_COMMIT_LOGS}; then
+      loginfo "WARNING: Backing up Commit Logs can cause script to fail if server is under load"
+    fi
     if [ -z $commitlog_directory ]; then 
       if [ -z $CASS_HOME ]; then
         logerror "Cannot parse commitlog_directory from ${YAML_FILE} and --home-dir argument" \
@@ -278,8 +290,14 @@ function validate() {
       else
         commitlog_directory="${CASS_HOME}/data/commitlog"
       fi
-    fi 
-     if [ -z $saved_caches_directory ]; then 
+    fi
+    if [ ! -d ${commitlog_directory} ]; then
+      logerror "no diretory commitlog_directory: ${commitlog_directory} "
+    fi
+    if ${INCLUDE_CACHES}; then
+      loginfo "Backing up saved caches can waste space and time, but it is happening anyway"
+    fi
+    if [ -z $saved_caches_directory ]; then 
       if [ -z $CASS_HOME ]; then
         logerror "Cannot parse saved_caches_directory from ${YAML_FILE} and --home-dir argument" \
         " is missing, which should be the \$CASSANDRA_HOME path"
@@ -287,11 +305,11 @@ function validate() {
         saved_caches_directory="${CASS_HOME}/data/saved_caches"
       fi
     fi 
-    if [ ! -d ${data_file_directories} ] || [ ! -d ${commitlog_directory} ] || [ ! -d ${saved_caches_directory} ]; then
-      logerror "One or more of the critical cassandra directories does not exist: "
-      logerror "data_file_directories: ${data_file_directories} "
-      logerror "commitlog_directory: ${commitlog_directory} "
-      logerror "saved_caches_directory: ${saved_caches_directory} "
+    if [ ! -d ${saved_caches_directory} ]; then
+      logerror "saved_caches_directory does not exist: ${saved_caches_directory} "
+    fi
+    if [ ! -d ${data_file_directories} ]; then
+      logerror "data_file_directories does not exist : ${data_file_directories} "
     fi
     #BACKUP_DIR is used to stage backups and stage restores, so create it either way
     if [ ! -d ${BACKUP_DIR} ]; then
@@ -432,6 +450,8 @@ function verbose_vars() {
   logverbose "GSUTIL: ${GSUTIL}"
   logverbose "HOSTNAME: ${HOSTNAME}"
   logverbose "INCREMENTAL: ${INCREMENTAL}"
+  logverbose "INCLUDE_CACHES: ${INCLUDE_CACHES}"
+  logverbose "INCLUDE_COMMIT_LOGS: ${INCLUDE_COMMIT_LOGS}"
   logverbose "KEEP_OLD_FILES: ${KEEP_OLD_FILES}"
   logverbose "LOG_DIR: ${LOG_DIR}"
   logverbose "LOG_FILE: ${LOG_FILE}"
@@ -647,9 +667,14 @@ function export_schema() {
 # Copy the commit logs, saved caches directoy and the yaml config file
 function copy_other_files() {
   loginfo "Copying caches, commitlogs and config file paths to backup list"
-
-  find "${commitlog_directory}" -type f >> "${TARGET_LIST_FILE}"
-  find "${saved_caches_directory}" -type f >> "${TARGET_LIST_FILE}"
+  #resolves issue #2 
+  if ${INCLUDE_COMMIT_LOGS}; then
+    find "${commitlog_directory}" -type f >> "${TARGET_LIST_FILE}"
+  fi
+  #resolves issue #3
+  if ${INCLUDE_CACHES}; then
+    find "${saved_caches_directory}" -type f >> "${TARGET_LIST_FILE}"
+  fi
   echo "${YAML_FILE}" >> "${TARGET_LIST_FILE}"
 }
 
@@ -992,7 +1017,7 @@ function restore_cleanup() {
      fi
     done
     rm -rf ${BACKUP_DIR}/restore
-    rm -rf ${COMPRESS_DIR}/*
+    rm -rf ${COMPRESS_DIR:?"aborting bad compress_dir"}/*
   fi
 }
 
@@ -1052,6 +1077,7 @@ for arg in "$@"; do
     "--force")   set -- "$@" "-f" ;;
     "--help") set -- "$@" "-h" ;;
     "--home-dir") set -- "$@" "-H" ;;
+    "--inc-commit-logs") set -- "$@" "-L" ;;
     "--incremental") set -- "$@" "-i" ;;
     "--log-dir")   set -- "$@" "-l" ;;
     "--keep-old")   set -- "$@" "-k" ;;
@@ -1061,13 +1087,14 @@ for arg in "$@"; do
     "--split-size")   set -- "$@" "-s" ;;
     "--target-gz-dir")   set -- "$@" "-T" ;;
     "--verbose")   set -- "$@" "-v" ;;
+    "--with-caches")   set -- "$@" "-w" ;;
     "--yaml")   set -- "$@" "-y" ;;
     "--zip")   set -- "$@" "-z" ;;
     *)        set -- "$@" "$arg"
   esac
 done
 
-while getopts 'a:b:BcCd:DfhH:iIjkl:nN:p:rs:S:T:u:U:vy:z' OPTION
+while getopts 'a:b:BcCd:DfhH:iIjkl:LnN:p:rs:S:T:u:U:vwy:z' OPTION
 do
   case $OPTION in
       a)
@@ -1088,9 +1115,11 @@ do
       d)
           BACKUP_DIR=${OPTARG}
           ;;
-      D)  DOWNLOAD_ONLY=true
+      D)  
+          DOWNLOAD_ONLY=true
           ;;
-      f)  FORCE_RESTORE=true
+      f)  
+          FORCE_RESTORE=true
           ;;
       h)
           print_usage
@@ -1118,6 +1147,9 @@ do
           LOG_OUTPUT=true
           [ -d ${OPTARG} ] && LOG_DIR=${OPTARG%/}
           ;;
+      L)  
+          INCLUDE_COMMIT_LOGS=true
+	        ;;
       n)
           DRY_RUN=true
           ;;
@@ -1150,6 +1182,9 @@ do
           ;;
       v)
           VERBOSE=true
+          ;;
+      w)
+          INCLUDE_CACHES=true
           ;;
       y)
           YAML_FILE=${OPTARG}
@@ -1186,6 +1221,8 @@ ERROR_COUNT=0 #used in validation step will exit if > 0
 FORCE_RESTORE=${FORCE_RESTORE:-false} #flag to bypass restore confirmation prompt
 GSUTIL="$(which gsutil)" #which gsutil script
 HOSTNAME=${HOSTNAME:-"$(hostname)"} #used for gcs backup location
+INCLUDE_CACHES=${INCLUDE_CACHES:-false} #include the saved caches for posterity
+INCLUDE_COMMIT_LOGS=${INCLUDE_COMMIT_LOGS:-false} #include the commit logs for extra safety
 INCREMENTAL=${INCREMENTAL:-false}  # flag to indicate only incremental files
 KEEP_OLD_FILES=${KEEP_OLD_FILES:-false}
 LOG_DIR=${LOG_DIR:-/var/log/cassandra} #where to write the log files
