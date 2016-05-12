@@ -514,7 +514,7 @@ function backup() {
     clear_snapshots
   fi
   if ${INCREMENTAL}; then
-      find_incrementals 
+    find_incrementals
   else
     export_schema
     take_snapshot
@@ -527,6 +527,7 @@ function backup() {
     archive_compress
   fi
   copy_to_gcs
+  save_last_inc_backup_time
   backup_cleanup
   if ${CLEAR_INCREMENTALS}; then
     clear_incrementals
@@ -685,21 +686,34 @@ function copy_other_files() {
 # compare against a timestamp file to copy only the newest files
 function find_incrementals() {
   loginfo "Locating Incremental backup files"
-  local last_inc_backup_time
-  last_inc_backup_time="$(head -n 1 ${BACKUP_DIR}/last_inc_backup_time)"
+  LAST_INC_BACKUP_TIME="$(head -n 1 ${BACKUP_DIR}/last_inc_backup_time)"
+  #take time before list to backup is compiled
+  local time_before_find=$(prepare_date "+%F %H:%M:%S")
   for i in "${data_file_directories[@]}"
   do
-    find $i -path '*/backups/*' -type f -name "*-ka-*" -newermt  "${last_inc_backup_time}" \
-    >> "${TARGET_LIST_FILE}"
+    if [ -n "$LAST_INC_BACKUP_TIME" ]; then
+      find $i -mindepth 4 -maxdepth 4 -path '*/backups/*' -type f \
+        \( -name "*.db" -o -name "*.crc32" -o -name "*.txt" \) \
+        -newermt "$LAST_INC_BACKUP_TIME" >> "${TARGET_LIST_FILE}"
+    else
+      find $i -mindepth 4 -maxdepth 4 -path '*/backups/*' -type f \
+        \( -name "*.db" -o -name "*.crc32" -o -name "*.txt" \) \
+        >> "${TARGET_LIST_FILE}"
+    fi
   done
   #if there is only one line in the file then no files were found
   if [ $(cat "${TARGET_LIST_FILE}" | wc -l) -lt 1 ]; then
     loginfo "No new incremental files detected, aborting backup"
     exit 0
   fi
+  #store time right before backup list creation to update after successful backup
+  LAST_INC_BACKUP_TIME=$time_before_find
+}
+
+# After successful backup, update last_inc_backup_time file
+function save_last_inc_backup_time() {
   if ! $DRY_RUN; then
-    #capture last incremental backup timestamp
-    prepare_date "+%F %H:%M:%S" > "${BACKUP_DIR}/last_inc_backup_time"
+    echo "$LAST_INC_BACKUP_TIME" > ${BACKUP_DIR}/last_inc_backup_time
   fi
 }
 
@@ -1258,6 +1272,7 @@ YAML_FILE=${YAML_FILE:-/etc/cassandra/cassandra.yaml} #Cassandra config file
 ARCHIVE_FILE="cass-${DATE}-${SUFFIX}.${TAR_EXT}"
 SPLIT_FILE_SUFFIX="cass-${DATE}-${SUFFIX}"
 TARGET_LIST_FILE="${BACKUP_DIR}/${SUFFIX}_backup_files-${DATE}"
+LAST_INC_BACKUP_TIME="" #used to keep track of the incremental backup time
 
 # Validate input
 validate
