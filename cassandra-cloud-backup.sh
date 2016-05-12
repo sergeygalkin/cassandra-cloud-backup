@@ -265,15 +265,15 @@ function validate() {
     if [ -z ${CQLSH} ]; then
       logerror "Cannot find cqlsh utility please make sure it is in the PATH"
     fi
-    if [ ! -f $YAML_FILE ]; then
+    if [ ! -f ${YAML_FILE} ]; then
       logerror "Yaml File ${YAML_FILE} does not exist and --yaml argument is missing"
     else
       #different values are needed for backup and for restore
       eval "parse_yaml_${ACTION}"
     fi
 
-    if [ -z $data_file_directories ]; then 
-      if [ -z $CASS_HOME ]; then
+    if [ -z ${data_file_directories} ]; then 
+      if [ -z ${CASS_HOME} ]; then
         logerror "Cannot parse data_directories from ${YAML_FILE} and --home-dir argument" \
         " is missing, which should be the \$CASSANDRA_HOME path"
       else
@@ -283,8 +283,8 @@ function validate() {
     if ${INCLUDE_COMMIT_LOGS}; then
       loginfo "WARNING: Backing up Commit Logs can cause script to fail if server is under load"
     fi
-    if [ -z $commitlog_directory ]; then 
-      if [ -z $CASS_HOME ]; then
+    if [ -z ${commitlog_directory} ]; then 
+      if [ -z ${CASS_HOME} ]; then
         logerror "Cannot parse commitlog_directory from ${YAML_FILE} and --home-dir argument" \
         " is missing, which should be the \$CASSANDRA_HOME path"
       else
@@ -297,8 +297,8 @@ function validate() {
     if ${INCLUDE_CACHES}; then
       loginfo "Backing up saved caches can waste space and time, but it is happening anyway"
     fi
-    if [ -z $saved_caches_directory ]; then 
-      if [ -z $CASS_HOME ]; then
+    if [ -z ${saved_caches_directory} ]; then 
+      if [ -z ${CASS_HOME} ]; then
         logerror "Cannot parse saved_caches_directory from ${YAML_FILE} and --home-dir argument" \
         " is missing, which should be the \$CASSANDRA_HOME path"
       else
@@ -323,7 +323,7 @@ function validate() {
       loginfo "Creating compression target directory"
       mkdir -p ${COMPRESS_DIR}
     fi
-    if [ -z $TAR ] || [ -z $NICE ]; then
+    if [ -z ${TAR} ] || [ -z ${NICE} ]; then
       logerror "The tar and nice utilities must be present to win."
     fi
     if [ ${ACTION} = "restore" ]; then
@@ -397,7 +397,7 @@ function validate() {
         if ${CLEAR_SNAPSHOTS}; then
           logerror "--incremental option is not compatible with --clear-old-ss option"
         fi
-        if [ -z $incremental_backups ] || [  $incremental_backups = false  ]; then
+        if [ -z ${incremental_backups} ] || [  ${incremental_backups} = false  ]; then
           logerror "Cannot copy incremental backups until 'incremental_backups' is true " \
           "in ${YAML_FILE} "
         fi
@@ -647,7 +647,7 @@ function take_snapshot() {
   if ${DRY_RUN}; then
     loginfo "DRY RUN: ${NODETOOL} ${USER_OPTIONS} snapshot -t ${SNAPSHOT_NAME} "
   else
-    $NODETOOL ${USER_OPTIONS} snapshot -t "${SNAPSHOT_NAME}" #2>&1 > ${LOG_FILE}
+    ${NODETOOL} ${USER_OPTIONS} snapshot -t "${SNAPSHOT_NAME}" #2>&1 > ${LOG_FILE}
     loginfo "Completed Snapshot ${SNAPSHOT_NAME}"
   fi
 }
@@ -656,7 +656,7 @@ function take_snapshot() {
 function export_schema() {
   loginfo "Exporting Schema to ${SCHEMA_DIR}/${DATE}-schema.cql"
   local cmd
-  cmd="$CQLSH ${CQLSH_HOST} ${native_transport_port} ${USER_OPTIONS} -e 'DESC SCHEMA;'"
+  cmd="${CQLSH} ${CQLSH_HOST} ${native_transport_port} ${USER_OPTIONS} -e 'DESC SCHEMA;'"
   if ${DRY_RUN}; then
     loginfo "DRY RUN:  ${cmd}  > ${SCHEMA_DIR}/${DATE}-schema.cql"
   else
@@ -691,12 +691,12 @@ function find_incrementals() {
   local time_before_find=$(prepare_date "+%F %H:%M:%S")
   for i in "${data_file_directories[@]}"
   do
-    if [ -n "$LAST_INC_BACKUP_TIME" ]; then
-      find $i -mindepth 4 -maxdepth 4 -path '*/backups/*' -type f \
+    if [ -n "${LAST_INC_BACKUP_TIME}" ]; then
+      find ${i} -mindepth 4 -maxdepth 4 -path '*/backups/*' -type f \
         \( -name "*.db" -o -name "*.crc32" -o -name "*.txt" \) \
-        -newermt "$LAST_INC_BACKUP_TIME" >> "${TARGET_LIST_FILE}"
+        -newermt "${LAST_INC_BACKUP_TIME}" >> "${TARGET_LIST_FILE}"
     else
-      find $i -mindepth 4 -maxdepth 4 -path '*/backups/*' -type f \
+      find ${i} -mindepth 4 -maxdepth 4 -path '*/backups/*' -type f \
         \( -name "*.db" -o -name "*.crc32" -o -name "*.txt" \) \
         >> "${TARGET_LIST_FILE}"
     fi
@@ -707,13 +707,13 @@ function find_incrementals() {
     exit 0
   fi
   #store time right before backup list creation to update after successful backup
-  LAST_INC_BACKUP_TIME=$time_before_find
+  LAST_INC_BACKUP_TIME=${time_before_find}
 }
 
 # After successful backup, update last_inc_backup_time file
 function save_last_inc_backup_time() {
-  if ! $DRY_RUN; then
-    echo "$LAST_INC_BACKUP_TIME" > ${BACKUP_DIR}/last_inc_backup_time
+  if ! ${DRY_RUN}; then
+    echo "${LAST_INC_BACKUP_TIME}" > ${BACKUP_DIR}/last_inc_backup_time
   fi
 }
 
@@ -722,7 +722,7 @@ function find_snapshots() {
   loginfo "Locating Snapshot ${SNAPSHOT_NAME}"
   for i in "${data_file_directories[@]}"
   do
-    find $i -path "*/snapshots/${SNAPSHOT_NAME}/*" -type f >> "${TARGET_LIST_FILE}"
+    find ${i} -path "*/snapshots/${SNAPSHOT_NAME}/*" -type f >> "${TARGET_LIST_FILE}"
   done
 }
 
@@ -773,7 +773,7 @@ function clear_incrementals() {
     if ${DRY_RUN}; then
       loginfo "DRY RUN: did not clear old incremental backups"
     else
-      find $i -mindepth 4 -maxdepth 4 -path '*/backups/*' -type f \
+      find ${i} -mindepth 4 -maxdepth 4 -path '*/backups/*' -type f \
         \( -name "*.db" -o -name "*.crc32" -o -name "*.txt" \) \
         \! -newermt "${SNAPSHOT_TIME}" -exec rm -f ${VERBOSE_RM} {} \;
     fi
@@ -812,7 +812,7 @@ function backup_cleanup() {
       loginfo "Deleting backup files"
       find "${COMPRESS_DIR}/" -type f -exec rm -f ${VERBOSE_RM} {} \;
       find "${SCHEMA_DIR}/" -type f -exec rm -f ${VERBOSE_RM} {} \;
-      rm -f ${TARGET_LIST_FILE}
+      rm -f ${VERBOSE_RM} ${TARGET_LIST_FILE}
     fi
   fi
 }
@@ -848,7 +848,7 @@ function restore_get_files() {
   if ${DRY_RUN}; then
     loginfo "DRY RUN: Would have cleared restore dir ${BACKUP_DIR}/restore/*"
   else
-    rm -rf ${BACKUP_DIR}/restore/*
+    rm -rf ${VERBOSE_RM} ${BACKUP_DIR}/restore/*
   fi
   if ${SPLIT_FILE}; then
     restore_split_from_gcs
@@ -1020,9 +1020,9 @@ function restore_cleanup() {
       loginfo "  ${BACKUP_DIR}/restore/"
     else
       loginfo "Deleting old files"
-      rm -rf "${commitlog_directory}_old_${DATE}"
-      rm -rf "${saved_caches_directory}_old_${DATE}"
-      rm -rf "${BACKUP_DIR}/restore/"
+      rm -rf ${VERBOSE_RM} "${commitlog_directory}_old_${DATE}"
+      rm -rf ${VERBOSE_RM} "${saved_caches_directory}_old_${DATE}"
+      rm -rf ${VERBOSE_RM} "${BACKUP_DIR}/restore/"
     fi
 
     for i in "${data_file_directories[@]}"
@@ -1031,11 +1031,11 @@ function restore_cleanup() {
         loginfo "keeping old data: ${i}_old_${DATE}"
       else
         loginfo "deleting old data: ${i}_old_${DATE}"
-        rm -rf "${i}_old_${DATE}"
+        rm -rf ${VERBOSE_RM} "${i}_old_${DATE}"
      fi
     done
-    rm -rf ${BACKUP_DIR}/restore
-    rm -rf ${COMPRESS_DIR:?"aborting bad compress_dir"}/*
+    rm -rf ${VERBOSE_RM} ${BACKUP_DIR}/restore
+    rm -rf ${VERBOSE_RM} ${COMPRESS_DIR:?"aborting bad compress_dir"}/*
   fi
 }
 
