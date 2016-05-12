@@ -155,11 +155,11 @@ Cassandra 2+
 ###Cron Examples
 - Full gzip compressed snapshot every day at 1:30 am with nice level 10
 
-`30 1 * * * /path_to_scripts/cassandra-cloud-backup.sh -z -n10 -b gs://cass-bk123-vCcj -d /var/lib/cassandra/backups > /var/log/cassandra/$(date +\%Y\%m\%d\%H\%M\%S)-fbackup.log 2>&1`
+`30 1 * * * /path_to_scripts/cassandra-cloud-backup.sh -z -N10 -b gs://cass-bk123-vCcj -d /var/lib/cassandra/backups > /var/log/cassandra/$(date +\%Y\%m\%d\%H\%M\%S)-fbackup.log 2>&1`
 
 - Incremental gzip compressed backups copied every hour nice level 10
 
-`0 * * * * /path_to_scripts/cassandra-cloud-backup.sh -b -n10 gs://cass-bk123 -vjiz -d /var/lib/cassandra/backups > /var/log/cassandra/$(date +\%Y\%m\%d\%H\%M\%S)-ibackup.log 2>&1`
+`0 * * * * /path_to_scripts/cassandra-cloud-backup.sh -b -N10 gs://cass-bk123 -vjiz -d /var/lib/cassandra/backups > /var/log/cassandra/$(date +\%Y\%m\%d\%H\%M\%S)-ibackup.log 2>&1`
 
 ### Notes
 
