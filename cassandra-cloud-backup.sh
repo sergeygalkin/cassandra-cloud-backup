@@ -641,6 +641,8 @@ function clear_backup_file_list() {
 # Use nodetool to take a snapshot with a specific name
 function take_snapshot() {
   loginfo "Taking Snapshot ${SNAPSHOT_NAME}"
+  #later used to remove older incrementals
+  SNAPSHOT_TIME=$(prepare_date "+%F %H:%M:%S")
   if ${DRY_RUN}; then
     loginfo "DRY RUN: ${NODETOOL} ${USER_OPTIONS} snapshot -t ${SNAPSHOT_NAME} "
   else
@@ -757,7 +759,9 @@ function clear_incrementals() {
     if ${DRY_RUN}; then
       loginfo "DRY RUN: did not clear old incremental backups"
     else
-      find $i -path '*/backups/*' -type f -name "*-ka-*" -mmin +$AGE -exec rm -f {} \;
+      find $i -mindepth 4 -maxdepth 4 -path '*/backups/*' -type f \
+        \( -name "*.db" -o -name "*.crc32" -o -name "*.txt" \) \
+        \! -newermt "${SNAPSHOT_TIME}" -exec rm -f ${VERBOSE_RM} {} \;
     fi
   done
 }
@@ -792,8 +796,8 @@ function backup_cleanup() {
       loginfo "  ${SCHEMA_DIR}/${DATE}-schema.cql"
     else
       loginfo "Deleting backup files"
-      find "${COMPRESS_DIR}/" -type f -exec rm -f {} \;
-      find "${SCHEMA_DIR}/" -type f -exec rm -f {} \;
+      find "${COMPRESS_DIR}/" -type f -exec rm -f ${VERBOSE_RM} {} \;
+      find "${SCHEMA_DIR}/" -type f -exec rm -f ${VERBOSE_RM} {} \;
       rm -f ${TARGET_LIST_FILE}
     fi
   fi
@@ -1235,6 +1239,7 @@ USER_OPTIONS="" #nodetool and cqlsh options
 SCHEMA_DIR="${BACKUP_DIR}/schema" # schema backups directory
 SERVICE_NAME=${SERVICE_NAME:-cassandra} # sometimes the service name is different
 SNAPSHOT_NAME=snap-${DATE} #name of new snapshot to take
+SNAPSHOT_TIME="" #used to keep track of when the snapshot was taken
 SPLIT_SIZE=${SPLIT_SIZE:-"100M"} #size of files if split command is used
 SPLIT_FILE=${SPLIT_FILE:-false}  #whether or not to use the split command on backup archive
 SUFFIX="snpsht" #Differentiates the two types of backup files
@@ -1247,6 +1252,8 @@ USE_AUTH=${USE_AUTH:-false} #flag to use cqlsh authentication
 VERBOSE=${VERBOSE:-false} #prints detailed information
 VERBOSE_RSYNC="" # add more detail to rsync when verbose mode is active
 ${VERBOSE} && VERBOSE_RSYNC="-v --progress"
+VERBOSE_RM="" # add more detail to remove when verbose mode is active
+${VERBOSE} && VERBOSE_RM="-v"
 YAML_FILE=${YAML_FILE:-/etc/cassandra/cassandra.yaml} #Cassandra config file
 ARCHIVE_FILE="cass-${DATE}-${SUFFIX}.${TAR_EXT}"
 SPLIT_FILE_SUFFIX="cass-${DATE}-${SUFFIX}"
