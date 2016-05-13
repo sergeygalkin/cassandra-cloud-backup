@@ -42,8 +42,9 @@ Description:
   In the event that you want to restore incremental backups you should start by
   restoring the last full snapshot prior to your target incremental backup file
   and manually move the files from each incremental backup in chronological order
-  leading up to the target incremental backup file.  The schema dump is included
-  in the snapshot backups, but if necessary it must also be restored manually.
+  leading up to the target incremental backup file.  The schema dump and token ring
+  are included in the snapshot backups, but if necessary they must also be restored
+  manually.
 
 Flags:
   -a, --alt-hostname
@@ -93,7 +94,8 @@ Flags:
 
   -k, --keep-old  
     Set this flag on restore to keep a local copy of the old data files
-    Set this flag on backup to keep a local copy of the compressed backup and schema dump
+    Set this flag on backup to keep a local copy of the compressed backup, schema dump,
+    and token ring
 
   -l, --log-dir
     Activate logging to file 'CassandraBackup${DATE}.log' from stdout
@@ -413,6 +415,10 @@ function validate() {
             loginfo "Creating schema dump directory: ${SCHEMA_DIR}"
             mkdir -p "${SCHEMA_DIR}"
           fi
+          if [ ! -d "${TOKEN_RING_DIR}" ]; then
+            loginfo "Creating token ring dump directory: ${TOKEN_RING_DIR}"
+            mkdir -p "${TOKEN_RING_DIR}"
+          fi
       fi 
     fi
   fi
@@ -460,6 +466,7 @@ function verbose_vars() {
   logverbose "NICE_LEVEL: ${NICE_LEVEL}"
   logverbose "NODETOOL: ${NODETOOL}"
   logverbose "SCHEMA_DIR: ${SCHEMA_DIR}"
+  logverbose "TOKEN_RING_DIR: ${TOKEN_RING_DIR}"
   logverbose "SERVICE_NAME: ${SERVICE_NAME}"
   logverbose "SNAPSHOT_NAME: ${SNAPSHOT_NAME}"
   logverbose "SPLIT_FILE: ${SPLIT_FILE}"
@@ -517,6 +524,7 @@ function backup() {
     find_incrementals
   else
     export_schema
+    export_token_ring
     take_snapshot
     find_snapshots
   fi
@@ -666,6 +674,19 @@ function export_schema() {
   echo "${SCHEMA_DIR}/${DATE}-schema.cql" >> "${TARGET_LIST_FILE}"
 }
 
+# Export the whole token ring for safety
+function export_token_ring() {
+  loginfo "Exporting Token Ring to ${TOKEN_RING_DIR}/${DATE}-token-ring"
+  local cmd
+  cmd="${NODETOOL} ring"
+  if ${DRY_RUN}; then
+    loginfo "DRY RUN:  ${cmd}  > ${TOKEN_RING_DIR}/${DATE}-token-ring"
+  else
+    bash -c "${cmd} > ${TOKEN_RING_DIR}/${DATE}-token-ring"
+  fi
+  echo "${TOKEN_RING_DIR}/${DATE}-token-ring" >> "${TARGET_LIST_FILE}"
+}
+
 
 # Copy the commit logs, saved caches directoy and the yaml config file
 function copy_other_files() {
@@ -808,10 +829,12 @@ function backup_cleanup() {
       loginfo "Keeping backup files:"
       loginfo "  ${COMPRESS_DIR}/*"
       loginfo "  ${SCHEMA_DIR}/${DATE}-schema.cql"
+      loginfo "  ${TOKEN_RING_DIR}/${DATE}-token-ring"
     else
       loginfo "Deleting backup files"
       find "${COMPRESS_DIR}/" -type f -exec rm -f ${VERBOSE_RM} {} \;
       find "${SCHEMA_DIR}/" -type f -exec rm -f ${VERBOSE_RM} {} \;
+      find "${TOKEN_RING_DIR}/" -type f -exec rm -f ${VERBOSE_RM} {} \;
       rm -f ${VERBOSE_RM} ${TARGET_LIST_FILE}
     fi
   fi
@@ -1251,6 +1274,7 @@ NICE_LEVEL=${NICE_LEVEL:-10} ##10 is default nice level
 NODETOOL="$(which nodetool)" #which nodetool
 USER_OPTIONS="" #nodetool and cqlsh options
 SCHEMA_DIR="${BACKUP_DIR}/schema" # schema backups directory
+TOKEN_RING_DIR="${BACKUP_DIR}/token_ring" # token ring backups directory
 SERVICE_NAME=${SERVICE_NAME:-cassandra} # sometimes the service name is different
 SNAPSHOT_NAME=snap-${DATE} #name of new snapshot to take
 SNAPSHOT_TIME="" #used to keep track of when the snapshot was taken
