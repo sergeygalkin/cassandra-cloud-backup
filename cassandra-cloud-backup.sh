@@ -213,22 +213,22 @@ function prepare_date() {
 function loginfo() {
 
   if  ${LOG_OUTPUT}; then
-     echo "$(prepare_date +%F_%H:%M:%S): ${@}" >> "${LOG_FILE}"
+     echo "$(prepare_date +%F_%H:%M:%S): ${*}" >> "${LOG_FILE}"
   else
-     echo "$(prepare_date +%F_%H:%M:%S): ${@}"
+     echo "$(prepare_date +%F_%H:%M:%S): ${*}"
   fi
 }
 
 # Only used if -v --verbose is passed in
 function logverbose() {
   if ${VERBOSE}; then
-    loginfo "VERBOSE: ${@}"
+    loginfo "VERBOSE: ${*}"
   fi
 }
 
 # Pass errors to stderr.
 function logerror() {
-  loginfo "ERROR: ${@}" >&2
+  loginfo "ERROR: ${*}" >&2
   let ERROR_COUNT++
 }
 
