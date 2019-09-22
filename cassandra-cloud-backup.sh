@@ -1027,7 +1027,9 @@ function restore_start_cassandra() {
       loginfo "DRY RUN: Starting Cassandra"
   else
     if "${AUTO_RESTART}"; then
-      service ${SERVICE_NAME} start
+      # service ${SERVICE_NAME} start
+      # For usingg in kubernetes
+      kill 1
     fi
   fi
 }
